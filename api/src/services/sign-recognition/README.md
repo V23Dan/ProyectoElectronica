@@ -9,6 +9,6 @@ venv\Scripts\activate
 
 2. **Ejecutar el servicio, en el entorno virtual activo:**
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 192.168.56.1 --port 8000
 ```
 

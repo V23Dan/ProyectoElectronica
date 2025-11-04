@@ -4,7 +4,7 @@ import os
 from typing import Tuple
 
 class SignPredictor:
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str = 'trained_models/actionPalabrasV2.h5'):
         self.model = None
         self,model_path = model_path
         self.load_model()

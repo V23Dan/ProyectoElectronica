@@ -10,14 +10,16 @@ export const Session = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
-    startTime: {
+    start_time: {
       type: DataTypes.DATE,
       allowNull: false,
     },
-    endTime: {
+    end_time: {
       type: DataTypes.DATE,
       allowNull: false,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: false,
+  }
 );

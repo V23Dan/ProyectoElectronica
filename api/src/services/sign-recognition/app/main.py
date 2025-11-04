@@ -21,7 +21,8 @@ app = FastAPI(title="Servicio de Reconocimiento de lenguaje de señas")
 #Configuracion de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", 
+                   "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,30 +32,24 @@ app.add_middleware(
 db_client = PostgresClient()
 video_processor = VideoProcessor()
 
-#Inicializar camara al iniciar la app
 @app.on_event("startup")
 async def startup_event():
     logger.info("Iniciando el servicio de reconocimiento de lenguaje de señas...")
     
-    #Iniciar camara automaticamente
+    # Iniciar cámara automáticamente
     camera_connected = video_processor.initialize_camera(auto_connect=True)
     if camera_connected:
         camera_info = video_processor.get_camera_status()
-        logger.info(f"Cámara conectada: {camera_info.get('camera_name', 'Desconocida')}")
+        logger.info(f"Cámara conectada: {camera_info.get('name', 'Desconocida')}")  
     else:
         logger.warning("No se pudo conectar a la cámara al iniciar la aplicación.")
         
     try:
-        #Iniciar conexion con base de datos
-        await db_client.postgres_connection()
+        # Iniciar conexión con base de datos
+        await db_client.postgres_connection() 
         logger.info("Conexión a la base de datos Postgres establecida.")
     except Exception as e:
         logger.error(f"Error al conectar con la base de datos Postgres: {e}")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Apagando el servicio de reconocimiento de lenguaje de señas...")
-    video_processor.close()
 
 #WebSocket para transmisión de video y datos
 @app.websocket("/ws/video")
