@@ -11,4 +11,3 @@ venv\Scripts\activate
 ```bash
 uvicorn app.main:app --reload --host 192.168.56.1 --port 8000
 ```
-

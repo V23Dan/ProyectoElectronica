@@ -13,7 +13,7 @@ class HandLandmarks:
     def __init__(self):
         self.landmarks: List[Landmark] = []
         self.world_landmarks: List[Landmark] = []
-        self.handedness: str = ""  # "Left" or "Right"
+        self.handedness: str = "" 
         self.score: float = 0.0
     
     def add_landmark(self, x: float, y: float, z: float, visibility: float = None):

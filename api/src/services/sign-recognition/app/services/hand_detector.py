@@ -36,12 +36,6 @@ class HandDetector:
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, List[HandLandmarks]]:
         """
         Procesa un frame y detecta manos
-        
-        Args:
-            frame: Frame BGR de OpenCV
-            
-        Returns:
-            Tuple: (frame_annotated, list_of_hand_landmarks)
         """
         hand_landmarks_list = []
         

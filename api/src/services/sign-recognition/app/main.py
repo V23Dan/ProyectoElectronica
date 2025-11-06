@@ -362,28 +362,3 @@ async def health_check():
     }
     
     return health_status
-
-#Prueba
-@app.get("/", response_class=HTMLResponse)
-async def root():
-    """Página de inicio simple para pruebas"""
-    return """
-    <html>
-        <head>
-            <title>Servicio de Reconocimiento de Lenguaje de Señas</title>
-        </head>
-        <body>
-            <h1>Servicio de Reconocimiento de Lenguaje de Señas</h1>
-            <p>El servicio está funcionando correctamente.</p>
-            <p>Endpoints disponibles:</p>
-            <ul>
-                <li><strong>WebSocket Video:</strong> /ws/video</li>
-                <li><strong>WebSocket Control:</strong> /ws/control</li>
-                <li><strong>Estado de salud:</strong> /health</li>
-                <li><strong>Cámaras disponibles:</strong> /cameras</li>
-                <li><strong>Estado de cámara:</strong> /camera/status</li>
-            </ul>
-            <p>Conecta tu frontend React a los WebSockets para comenzar.</p>
-        </body>
-    </html>
-    """

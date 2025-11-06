@@ -37,7 +37,7 @@ class CameraManager:
         """Escanea y detecta cámaras disponibles"""
         cameras = []
         
-        # Probar cámaras locales (0-5)
+        # Probar cámaras locales
         for i in range(2):
             cap = cv2.VideoCapture(i)
             if cap.isOpened():
