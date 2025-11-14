@@ -1,0 +1,17 @@
+#Entornos virtuales
+env/
+.vscode/
+
+#Archivos de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+#Archivos de base de datos
+*.db
+*.sqlite3
+
+#Logs
+*.log

@@ -5,9 +5,7 @@ const SocketContext = createContext();
 
 export const useSocket = () => {
   const context = useContext(SocketContext);
-  if (!context) {
-    throw new Error('useSocket debe usarse dentro de SocketProvider');
-  }
+  if (!context) throw new Error('useSocket debe usarse dentro de SocketProvider');
   return context;
 };
 
@@ -18,112 +16,84 @@ export const SocketProvider = ({ children }) => {
   const controlSocketRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
 
-  const connectWebSockets = () => {
-    // Conexión para video
-    videoSocketRef.current = new WebSocket('ws://192.168.56.1:8000/ws/video');
-    
-    // Conexión para control
-    controlSocketRef.current = new WebSocket('ws://192.168.56.1:8000/ws/control');
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_WS || "http://192.168.56.1:8000";
 
-    // Eventos para WebSocket de Video
+  const connectWebSockets = () => {
+    console.log("Intentando conectar a backend:", BACKEND_URL);
+
+    videoSocketRef.current = new WebSocket(`${BACKEND_URL}/ws/video`);
+    controlSocketRef.current = new WebSocket(`${BACKEND_URL}/ws/control`);
+
+    // --- VIDEO SOCKET ---
     videoSocketRef.current.onopen = () => {
-      console.log('✅ Conectado al WebSocket de video');
+      console.log("Conectado al WebSocket de video");
       setIsConnected(true);
     };
 
     videoSocketRef.current.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
-        // Manejar diferentes tipos de mensajes
-        switch (data.type) {
-          case 'video_frame':
-            // Este lo manejará el componente de Translation
-            break;
-          case 'camera_status':
-            setSystemStatus(prev => ({ ...prev, camera_status: data.camera_status }));
-            break;
-          case 'session_started':
-            console.log('Sesión iniciada:', data.session_id);
-            break;
-          case 'error':
-            console.error('Error del servidor:', data.message);
-            break;
-          default:
-            console.log('Mensaje recibido:', data);
+        if (data.type === "camera_status") {
+          setSystemStatus(prev => ({ ...prev, camera_status: data.camera_status }));
         }
+        // el resto (video_frame) se maneja desde Translation.jsx
       } catch (error) {
-        console.error('Error parsing message:', error);
+        console.error("Error parseando mensaje de video:", error);
       }
     };
 
     videoSocketRef.current.onclose = () => {
-      console.log('❌ Desconectado del WebSocket de video');
+      console.warn("WS de video desconectado, reintentando...");
       setIsConnected(false);
-      
-      // Reconexión automática después de 3 segundos
-      reconnectTimeoutRef.current = setTimeout(() => {
-        console.log('🔄 Intentando reconectar...');
-        connectWebSockets();
-      }, 3000);
+      reconnectTimeoutRef.current = setTimeout(connectWebSockets, 3000);
     };
 
-    videoSocketRef.current.onerror = (error) => {
-      console.error('❌ Error en WebSocket de video:', error);
-    };
-
-    // Eventos para WebSocket de Control
+    // --- CONTROL SOCKET ---
     controlSocketRef.current.onopen = () => {
-      console.log('✅ Conectado al WebSocket de control');
+      console.log("Conectado al WebSocket de control");
     };
 
     controlSocketRef.current.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
-        if (data.type === 'system_status') {
-          setSystemStatus(data);
-        }
+        if (data.type === "system_status") setSystemStatus(data);
+        if (data.type === "camera_status") setSystemStatus(prev => ({ ...prev, camera_status: data.camera_status }));
+        if (data.type === "error") console.error("Error del backend:", data.message);
       } catch (error) {
-        console.error('Error parsing control message:', error);
+        console.error("Error parseando mensaje de control:", error);
       }
     };
   };
 
+  // --- Montaje / desmontaje ---
   useEffect(() => {
     connectWebSockets();
-
     return () => {
-      // Limpiar timeouts y conexiones
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (videoSocketRef.current) {
-        videoSocketRef.current.close();
-      }
-      if (controlSocketRef.current) {
-        controlSocketRef.current.close();
-      }
+      clearTimeout(reconnectTimeoutRef.current);
+      videoSocketRef.current?.close();
+      controlSocketRef.current?.close();
     };
   }, []);
 
-  // Función para enviar comandos al WebSocket de control
+  // --- Enviar comandos ---
   const sendControlCommand = (command, data = {}) => {
-    if (controlSocketRef.current && controlSocketRef.current.readyState === WebSocket.OPEN) {
+    if (controlSocketRef.current?.readyState === WebSocket.OPEN) {
       controlSocketRef.current.send(JSON.stringify({ command, ...data }));
     } else {
-      console.warn('WebSocket de control no está conectado');
+      console.warn("WebSocket de control no está conectado");
     }
   };
 
   return (
-    <SocketContext.Provider value={{ 
-      isConnected, 
-      systemStatus,
-      videoSocket: videoSocketRef.current,
-      controlSocket: controlSocketRef.current,
-      sendControlCommand 
-    }}>
+    <SocketContext.Provider
+      value={{
+        isConnected,
+        systemStatus,
+        videoSocket: videoSocketRef.current,
+        controlSocket: controlSocketRef.current,
+        sendControlCommand,
+      }}
+    >
       {children}
     </SocketContext.Provider>
   );

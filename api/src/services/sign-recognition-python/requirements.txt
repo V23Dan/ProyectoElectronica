@@ -1,0 +1,19 @@
+# Core
+numpy
+opencv-python
+mediapipe
+tensorflow
+scikit-learn
+joblib
+pandas
+
+# Backend
+fastapi
+uvicorn
+psycopg2-binary
+asyncpg
+sqlalchemy
+
+# Utilidades
+python-dotenv
+requests
