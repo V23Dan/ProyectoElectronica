@@ -1,3 +1,9 @@
+# app/services/video_processor.py
+"""
+Video Processor Híbrido que procesa frames con HolisticProcessor
+y clasifica señas usando el modelo híbrido (258 features).
+"""
+
 import time
 import logging
 import cv2
@@ -15,7 +21,11 @@ logger = logging.getLogger(__name__)
 
 class HybridVideoProcessor:
     """
-    Procesador de video optimizado para mejor rendimiento.
+    Procesador de video que:
+    1. Captura frames desde CameraManager
+    2. Extrae landmarks holísticos (258 features) con HolisticProcessor
+    3. Acumula secuencias de 30 frames
+    4. Clasifica señas con HybridSignClassifier
     """
     
     def __init__(
@@ -25,6 +35,15 @@ class HybridVideoProcessor:
         holistic_processor: HolisticProcessor,
         show_video: bool = False
     ):
+        """
+        Inicializa el procesador de video híbrido.
+        
+        Args:
+            camera_manager: Gestor de cámara
+            classifier: Clasificador híbrido
+            holistic_processor: Procesador holístico
+            show_video: Si True, muestra ventana con video procesado
+        """
         self.camera_manager = camera_manager
         self.classifier = classifier
         self.holistic_processor = holistic_processor
@@ -43,23 +62,23 @@ class HybridVideoProcessor:
         
         # Control de estabilidad
         self.no_detection_counter = 0
-        self.stability_threshold = 3  # Reducido de 5 a 3
+        self.stability_threshold = 5  # Frames sin detección antes de limpiar buffer
         
         # Configuración de umbral de confianza
-        self.confidence_threshold = 0.3  # Reducido de 0.4 a 0.3
-        
-        # Optimización: inferencia cada N frames
-        self.inference_interval = 3  # Solo clasificar cada 3 frames
-        self.frame_count = 0
-        
-        # Cache del último frame procesado
-        self.last_processed_frame = None
+        self.confidence_threshold = 0.4
         
         logger.info("HybridVideoProcessor inicializado")
-        logger.info(f"   - Umbral confianza: {self.confidence_threshold}")
-        logger.info(f"   - Intervalo inferencia: cada {self.inference_interval} frames")
 
     def initialize_camera(self, auto_connect: bool = True) -> bool:
+        """
+        Inicializa la cámara.
+        
+        Args:
+            auto_connect: Si True, intenta conectar automáticamente
+            
+        Returns:
+            bool: True si la cámara se inicializó correctamente
+        """
         if not auto_connect:
             logger.info("Inicialización manual de cámara deshabilitada")
             return False
@@ -75,15 +94,27 @@ class HybridVideoProcessor:
         return ok
 
     def switch_camera(self, camera_config: Dict[str, Any]) -> bool:
+        """
+        Cambia entre cámaras (ESP32 o local).
+        
+        Args:
+            camera_config: Configuración de cámara
+            
+        Returns:
+            bool: True si el cambio fue exitoso
+        """
         return self.camera_manager.switch_camera(camera_config)
 
     def get_camera_status(self) -> Dict[str, Any]:
+        """Retorna el estado actual de la cámara"""
         return self.camera_manager.get_status()
 
     def get_available_cameras(self) -> Dict[str, Any]:
+        """Lista cámaras disponibles"""
         return self.camera_manager.list_cameras()
 
     def close(self):
+        """Cierra y libera todos los recursos"""
         try:
             self.holistic_processor.close()
             self.camera_manager.close()
@@ -95,7 +126,17 @@ class HybridVideoProcessor:
 
     def process_next_frame(self) -> Optional[Tuple[np.ndarray, str, float]]:
         """
-        Procesa el siguiente frame con optimizaciones de rendimiento.
+        Procesa el siguiente frame del video stream.
+        
+        Pipeline:
+        1. Captura frame de cámara
+        2. Extrae landmarks holísticos (258 features)
+        3. Agrega al buffer de secuencia (30 frames)
+        4. Cuando buffer está lleno, clasifica la seña
+        5. Anota frame con predicción y métricas
+        
+        Returns:
+            Optional[Tuple]: (frame_procesado, prediccion, confianza) o None si no hay frame
         """
         # 1. CAPTURAR FRAME
         frame = self.camera_manager.get_frame()
@@ -103,16 +144,6 @@ class HybridVideoProcessor:
             return None
 
         self.performance.start_frame()
-        self.frame_count += 1
-
-        # OPTIMIZACIÓN: Reducir resolución del frame para procesamiento más rápido
-        # (mantenemos original para display)
-        frame_display = frame.copy()
-        
-        # Reducir a 640x480 si es más grande
-        h, w = frame.shape[:2]
-        if w > 640 or h > 480:
-            frame = cv2.resize(frame, (640, 480))
 
         # 2. PROCESAR CON HOLISTIC
         landmarks_vector, results = self.holistic_processor.process(frame)
@@ -123,29 +154,25 @@ class HybridVideoProcessor:
         if not has_hands:
             self.no_detection_counter += 1
             
-            # Limpiar buffer más rápido
+            # Limpiar buffer si pasan muchos frames sin detección
             if self.no_detection_counter > self.stability_threshold:
                 if len(self.sequence_buffer) > 0:
                     self.sequence_buffer.clear()
-                    logger.debug("Buffer limpiado")
+                    logger.debug("🗑️ Buffer limpiado por falta de detecciones")
                 self.current_prediction = ("NO_HANDS_DETECTED", 0.0)
             
-            # Reutilizar último frame procesado si existe
-            if self.last_processed_frame is not None:
-                processed = self.last_processed_frame
-            else:
-                annotated = self.holistic_processor.draw_landmarks(frame_display, results)
-                processed = self._annotate_frame(
-                    annotated, 
-                    "Sin manos detectadas",
-                    show_buffer=True
-                )
-                self.last_processed_frame = processed
+            # Dibujar landmarks disponibles (si hay pose pero no manos)
+            annotated = self.holistic_processor.draw_landmarks(frame, results)
+            processed = self._annotate_frame(
+                annotated, 
+                "Sin manos detectadas",
+                show_buffer=True
+            )
             
             self.performance.end_frame()
             return processed, "NO_HANDS_DETECTED", 0.0
         
-        # Resetear contador
+        # Resetear contador de no-detección
         self.no_detection_counter = 0
         
         # 4. VALIDAR LANDMARKS
@@ -154,7 +181,7 @@ class HybridVideoProcessor:
                 f"Landmarks inválidos: "
                 f"{landmarks_vector.shape if landmarks_vector is not None else 'None'}"
             )
-            annotated = self.holistic_processor.draw_landmarks(frame_display, results)
+            annotated = self.holistic_processor.draw_landmarks(frame, results)
             processed = self._annotate_frame(annotated, "Error en extracción")
             self.performance.end_frame()
             return processed, "ERROR_EXTRACTION", 0.0
@@ -163,62 +190,58 @@ class HybridVideoProcessor:
         self.sequence_buffer.append(landmarks_vector)
         
         # 6. DIBUJAR LANDMARKS
-        annotated = self.holistic_processor.draw_landmarks(frame_display, results)
+        annotated = self.holistic_processor.draw_landmarks(frame, results)
         
         # 7. VERIFICAR SI TENEMOS 30 FRAMES
         if len(self.sequence_buffer) < 30:
             frames_needed = 30 - len(self.sequence_buffer)
             processed = self._annotate_frame(
                 annotated,
-                f"Cargando... ({frames_needed} frames)",
+                f"Cargando secuencia... ({frames_needed} frames restantes)",
                 show_buffer=True
             )
             self.performance.end_frame()
             return processed, "LOADING_SEQUENCE", 0.0
         
-        # 8. CLASIFICAR SOLO CADA N FRAMES (OPTIMIZACIÓN)
-        prediction = self.current_prediction[0]
-        confidence = self.current_prediction[1]
+        # 8. CONSTRUIR SECUENCIA PARA CLASIFICACIÓN
+        sequence_array = np.array(list(self.sequence_buffer), dtype=np.float32)
+        sequence_array = sequence_array.reshape(1, 30, 258)
         
-        if self.frame_count % self.inference_interval == 0:
-            # Construir secuencia
-            sequence_array = np.array(list(self.sequence_buffer), dtype=np.float32)
-            sequence_array = sequence_array.reshape(1, 30, 258)
+        # 9. CLASIFICAR
+        start_inf = time.perf_counter()
+        try:
+            prediction, confidence = self.classifier.predict(sequence_array)
             
-            # Clasificar
-            start_inf = time.perf_counter()
-            try:
-                prediction, confidence = self.classifier.predict(sequence_array)
+            # Filtrar predicciones con baja confianza
+            if confidence < self.confidence_threshold:
+                original_pred = prediction
+                prediction = "BAJA_CONFIANZA"
+                logger.debug(
+                    f"Confianza baja: {original_pred} ({confidence:.2%}) < "
+                    f"{self.confidence_threshold:.2%}"
+                )
                 
-                # Mostrar siempre la predicción, incluso con baja confianza
-                # (para debugging)
-                if confidence < self.confidence_threshold:
-                    # Mantener la predicción pero indicar baja confianza
-                    logger.debug(
-                        f"Baja confianza: {prediction} ({confidence:.2%})"
-                    )
-                    
-            except Exception as e:
-                logger.error(f"Error en inferencia: {e}", exc_info=True)
-                prediction, confidence = "ERROR_PREDICCION", 0.0
-            
-            self.last_inference_time = time.perf_counter() - start_inf
-            self.current_prediction = (prediction, confidence)
+        except Exception as e:
+            logger.error(f"Error en inferencia: {e}", exc_info=True)
+            prediction, confidence = "ERROR_PREDICCION", 0.0
         
-        # 9. ANOTAR FRAME
+        self.last_inference_time = time.perf_counter() - start_inf
+
+        # 10. ACTUALIZAR PREDICCIÓN ACTUAL
+        self.current_prediction = (prediction, confidence)
+
+        # 11. ANOTAR FRAME CON INFORMACIÓN
         processed_frame = self._annotate_frame(
             annotated, 
             prediction, 
             confidence,
             show_buffer=True,
-            show_inference_time=(self.frame_count % self.inference_interval == 0)
+            show_inference_time=True
         )
-        
-        # Cachear frame procesado
-        self.last_processed_frame = processed_frame
 
         self.performance.end_frame()
         
+        # 12. MOSTRAR VENTANA SI ESTÁ HABILITADO
         if self.show_video:
             cv2.imshow("Hybrid Sign Recognition", processed_frame)
             key = cv2.waitKey(1) & 0xFF
@@ -232,15 +255,19 @@ class HybridVideoProcessor:
         return processed_frame, prediction, confidence
 
     def reset_classifier(self):
-        """Reinicia el estado interno"""
+        """Reinicia el estado interno del clasificador"""
         self.sequence_buffer.clear()
         self.current_prediction = ("", 0.0)
         self.no_detection_counter = 0
-        self.frame_count = 0
-        self.last_processed_frame = None
-        logger.info("Clasificador reiniciado")
+        logger.info("Clasificador reiniciado (buffer limpiado)")
 
     def get_current_prediction(self) -> Tuple[str, float]:
+        """
+        Retorna la última predicción realizada.
+        
+        Returns:
+            Tuple[str, float]: (prediccion, confianza)
+        """
         return self.current_prediction
 
     def _annotate_frame(
@@ -251,72 +278,101 @@ class HybridVideoProcessor:
         show_buffer: bool = False,
         show_inference_time: bool = False
     ) -> np.ndarray:
-        """Dibuja información de anotación (versión ligera)"""
+        """
+        Dibuja información de anotación sobre el frame.
+        
+        Args:
+            frame: Frame a anotar
+            text: Texto principal (predicción)
+            confidence: Confianza de la predicción (0-1)
+            show_buffer: Mostrar estado del buffer
+            show_inference_time: Mostrar tiempo de inferencia
+            
+        Returns:
+            Frame anotado
+        """
         annotated = frame.copy()
         h, w = annotated.shape[:2]
         
-        # Barra superior más pequeña
-        bar_height = 50 if not show_inference_time else 70
+        # Calcular altura de barra superior
+        bar_height = 70
+        if show_inference_time:
+            bar_height = 95
         
-        # Fondo semi-transparente
-        overlay = np.zeros((bar_height, w, 3), dtype=np.uint8)
-        cv2.addWeighted(overlay, 0.65, annotated[0:bar_height], 0.35, 0, annotated[0:bar_height])
+        # FONDO SEMI-TRANSPARENTE
+        overlay = np.zeros_like(annotated, dtype=np.uint8)
+        cv2.rectangle(overlay, (0, 0), (w, bar_height), (0, 0, 0), -1)
+        alpha = 0.65
+        cv2.addWeighted(overlay, alpha, annotated, 1 - alpha, 0, annotated)
 
-        # Texto principal
+        # TEXTO PRINCIPAL (PREDICCIÓN)
         display_text = text
         if confidence is not None and confidence > 0:
-            display_text += f" ({confidence*100:.0f}%)"
+            display_text += f" ({confidence*100:.1f}%)"
             
+            # Color según confianza
             if confidence > 0.7:
-                color = (0, 255, 0)
+                color = (0, 255, 0)  # Verde - Alta confianza
             elif confidence > self.confidence_threshold:
-                color = (0, 255, 255)
+                color = (0, 255, 255)  # Amarillo - Media confianza
             else:
-                color = (0, 165, 255)
+                color = (0, 165, 255)  # Naranja - Baja confianza
         else:
-            color = (255, 255, 255)
+            color = (255, 255, 255)  # Blanco - Sin confianza
 
         cv2.putText(
-            annotated, display_text, (10, 30), 
-            cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA
+            annotated, display_text, (10, 35), 
+            cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2, cv2.LINE_AA
         )
         
-        # Buffer info
+        # INFO DEL BUFFER
         if show_buffer:
-            buffer_info = f"{len(self.sequence_buffer)}/30"
+            buffer_info = f"Buffer: {len(self.sequence_buffer)}/30"
             buffer_color = (0, 255, 0) if len(self.sequence_buffer) == 30 else (200, 200, 200)
             cv2.putText(
-                annotated, buffer_info, (w - 80, 30), 
+                annotated, buffer_info, (10, 60), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, buffer_color, 1, cv2.LINE_AA
             )
         
-        # Tiempo de inferencia
+        # TIEMPO DE INFERENCIA
         if show_inference_time and self.last_inference_time > 0:
-            inf_time = f"{self.last_inference_time*1000:.0f}ms"
+            inf_time = f"Inference: {self.last_inference_time*1000:.1f}ms"
             cv2.putText(
-                annotated, inf_time, (10, 60), 
+                annotated, inf_time, (10, 85), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 150), 1, cv2.LINE_AA
             )
+        
+        # INDICADOR DE FORMATO (esquina inferior derecha)
+        format_text = "Holistic (258)"
+        text_size = cv2.getTextSize(format_text, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0]
+        cv2.putText(
+            annotated, format_text, 
+            (w - text_size[0] - 10, h - 10), 
+            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 100, 100), 1, cv2.LINE_AA
+        )
         
         return annotated
 
     def set_confidence_threshold(self, threshold: float):
-        """Ajusta el umbral de confianza"""
+        """
+        Ajusta el umbral de confianza para filtrar predicciones.
+        
+        Args:
+            threshold: Nuevo umbral (0.0-1.0)
+        """
         if 0.0 <= threshold <= 1.0:
             self.confidence_threshold = threshold
-            logger.info(f"Umbral ajustado a {threshold:.2%}")
+            logger.info(f"Umbral de confianza ajustado a {threshold:.2%}")
         else:
-            logger.warning(f"Umbral inválido: {threshold}")
-
-    def set_inference_interval(self, interval: int):
-        """Ajusta cada cuántos frames hacer inferencia"""
-        if interval >= 1:
-            self.inference_interval = interval
-            logger.info(f"Intervalo de inferencia: cada {interval} frames")
-        else:
-            logger.warning(f"Intervalo inválido: {interval}")
+            logger.warning(f"Umbral inválido: {threshold} (debe estar entre 0 y 1)")
 
     def get_stats(self) -> Dict[str, Any]:
+        """
+        Obtiene estadísticas del procesador.
+        
+        Returns:
+            dict con estadísticas de rendimiento y estado
+        """
         return {
             "buffer_size": len(self.sequence_buffer),
             "buffer_capacity": 30,
@@ -326,6 +382,5 @@ class HybridVideoProcessor:
             "last_inference_time_ms": self.last_inference_time * 1000,
             "fps": self.performance.get_fps(),
             "confidence_threshold": self.confidence_threshold,
-            "inference_interval": self.inference_interval,
-            "frame_count": self.frame_count
+            "no_detection_counter": self.no_detection_counter
         }

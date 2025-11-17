@@ -89,7 +89,7 @@ async def startup_event():
     logger.info("="*70)
     
     # Inicializar cámara
-    logger.info("📹 Inicializando cámara...")
+    logger.info("Inicializando cámara...")
     try:
         camera_manager.initialize(auto_connect=True)
         if camera_manager.get_status()['connected']:
@@ -114,9 +114,9 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Limpieza al cerrar la aplicación"""
-    logger.info("🛑 Cerrando aplicación...")
+    logger.info("Cerrando aplicación...")
     video_processor.close()
-    logger.info("✅ Recursos liberados")
+    logger.info("Recursos liberados")
 
 # ============================================================================
 # WEBSOCKET: VIDEO STREAM
@@ -203,7 +203,7 @@ async def websocket_video(websocket: WebSocket):
 
     except WebSocketDisconnect:
         connected_video_clients.discard(websocket)
-        logger.info(f"📺 Cliente {client_id} desconectado")
+        logger.info(f"Cliente {client_id} desconectado")
     except Exception as e:
         connected_video_clients.discard(websocket)
         logger.error(f"Error en WS video (cliente {client_id}): {e}")
@@ -329,7 +329,7 @@ async def websocket_control(websocket: WebSocket):
 
     except WebSocketDisconnect:
         connected_control_clients.discard(websocket)
-        logger.info(f"🎮 Cliente {client_id} desconectado del control")
+        logger.info(f"Cliente {client_id} desconectado del control")
     except Exception as e:
         connected_control_clients.discard(websocket)
         logger.error(f"Error en WS control (cliente {client_id}): {e}")
