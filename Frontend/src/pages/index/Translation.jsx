@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSocket } from "../../context/SocketContext";
+import Notifications from "../../components/Notifications/Notifications";
 import {
   Play,
   Square,
@@ -8,27 +9,42 @@ import {
   Activity,
   Zap,
   Settings,
+  Wifi,
+  WifiOff,
+  Cpu,
 } from "lucide-react";
 import "./Translation.css";
 
 const Translation = () => {
-  const { videoSocket, isConnected, systemStatus, sendControlCommand } =
-    useSocket();
+  const {
+    videoSocket,
+    isConnected,
+    systemStatus,
+    currentSession,
+    notifications,
+    removeNotification,
+    getStatus,
+    resetClassifier,
+    startSession,
+    stopSession,
+  } = useSocket();
 
   const videoCanvasRef = useRef(null);
   const [currentTranslation, setCurrentTranslation] = useState("");
   const [confidence, setConfidence] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [translationsHistory, setTranslationsHistory] = useState([]);
-  const [cameraInfo, setCameraInfo] = useState({});
   const [showAdvancedInfo, setShowAdvancedInfo] = useState(false);
   const [stats, setStats] = useState({
     fps: 0,
-    processingTime: 0,
-    framesProcessed: 0,
+    cpu: 0,
+    ram: 0,
+    inference_time_ms: 0,
+    buffer_current: 0,
+    buffer_max: 30,
   });
 
-  // 🧠 Manejar mensajes entrantes del WebSocket de video
+  // 🧠 Manejar mensajes del WebSocket de video
   useEffect(() => {
     if (!videoSocket) return;
 
@@ -64,31 +80,43 @@ const Translation = () => {
             setCurrentTranslation(data.prediction);
             setConfidence(data.confidence || 0);
 
-            // Guardar en historial si confianza es alta
+            // Guardar en historial solo predicciones válidas y de alta confianza
             if (
               data.confidence > 0.7 &&
-              data.prediction !== "NO_HANDS_DETECTED"
+              data.prediction !== "NO_HANDS_DETECTED" &&
+              data.prediction !== "LOADING_SEQUENCE" &&
+              data.prediction !== "BAJA_CONFIANZA" &&
+              !data.prediction.startsWith("ERROR")
             ) {
-              setTranslationsHistory((prev) => [
-                {
-                  text: data.prediction,
-                  confidence: data.confidence,
-                  timestamp: new Date().toLocaleTimeString(),
-                },
-                ...prev.slice(0, 9),
-              ]);
+              setTranslationsHistory((prev) => {
+                // Evitar duplicados consecutivos
+                if (prev.length > 0 && prev[0].text === data.prediction) {
+                  return prev;
+                }
+                
+                return [
+                  {
+                    text: data.prediction,
+                    confidence: data.confidence,
+                    timestamp: new Date().toLocaleTimeString(),
+                  },
+                  ...prev.slice(0, 14), // Mantener últimas 15
+                ];
+              });
             }
           }
 
-          // 🎛️ Actualizar info de cámara y métricas
-          setCameraInfo(data.camera_info || {});
-          setStats({
-            fps: data.fps || 0,
-            processingTime: data.processing_time || 0,
-            framesProcessed: (prev) => prev.framesProcessed + 1,
-          });
-        } else if (data.type === "camera_status") {
-          setCameraInfo(data.camera_status || {});
+          // 📊 Actualizar métricas de rendimiento
+          if (data.performance) {
+            setStats({
+              fps: data.performance.fps || 0,
+              cpu: data.performance.cpu || 0,
+              ram: data.performance.ram || 0,
+              inference_time_ms: data.performance.inference_time_ms || 0,
+              buffer_current: data.buffer_status?.current || 0,
+              buffer_max: data.buffer_status?.max || 30,
+            });
+          }
         }
       } catch (err) {
         console.error("Error procesando mensaje de video:", err);
@@ -99,39 +127,63 @@ const Translation = () => {
     return () => videoSocket.removeEventListener("message", handleMessage);
   }, [videoSocket]);
 
-  // 🔘 Controladores
+  // 🔘 Controladores de sesión
   const handleStartSession = () => {
     setIsProcessing(true);
-    sendControlCommand("start_session");
+    startSession();
   };
 
   const handleStopSession = () => {
     setIsProcessing(false);
-    sendControlCommand("stop_session");
+    stopSession();
   };
 
   const handleResetClassifier = () => {
-    sendControlCommand("reset_classifier");
+    resetClassifier();
     setTranslationsHistory([]);
     setCurrentTranslation("");
     setConfidence(0);
   };
 
-  const handleGetStatus = () => sendControlCommand("get_status");
-
+  // 🎨 Utilidades de UI
   const getConfidenceColor = (conf) => {
     if (conf > 0.8) return "#10b981"; // verde
     if (conf > 0.6) return "#f59e0b"; // amarillo
     return "#ef4444"; // rojo
   };
 
+  const getPredictionStatus = (text) => {
+    if (text === "NO_HANDS_DETECTED") return "sin-manos";
+    if (text === "LOADING_SEQUENCE") return "cargando";
+    if (text === "BAJA_CONFIANZA") return "baja-confianza";
+    if (text.startsWith("ERROR")) return "error";
+    return "detectado";
+  };
+
   // 🟢 Pedir estado al conectarse
   useEffect(() => {
-    if (isConnected) handleGetStatus();
-  }, [isConnected]);
+    if (isConnected) {
+      getStatus();
+    }
+  }, [isConnected, getStatus]);
+
+  // 🔄 Sincronizar estado de sesión
+  useEffect(() => {
+    if (currentSession !== null) {
+      setIsProcessing(true);
+    } else {
+      setIsProcessing(false);
+    }
+  }, [currentSession]);
 
   return (
     <div className="translation-page">
+      {/* Sistema de notificaciones */}
+      {/* <Notifications
+        notifications={notifications}
+        onRemove={removeNotification}
+      /> */}
+
       <div className="translation-layout">
         {/* === SECCIÓN PRINCIPAL === */}
         <div className="main-display">
@@ -142,12 +194,19 @@ const Translation = () => {
                 <Camera size={20} />
                 <h2>Video en Tiempo Real</h2>
                 <div className="connection-badge">
-                  <div
-                    className={`status-indicator ${
-                      isConnected ? "connected" : "disconnected"
-                    }`}
-                  />
-                  {isConnected ? "Conectado" : "Desconectado"}
+                  {isConnected ? (
+                    <>
+                      <Wifi size={16} className="icon-connected" />
+                      <span className="status-text connected">Conectado</span>
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff size={16} className="icon-disconnected" />
+                      <span className="status-text disconnected">
+                        Desconectado
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -158,13 +217,23 @@ const Translation = () => {
                   height="480"
                   className="video-canvas"
                 />
+                
+                {/* Overlay con información */}
                 <div className="video-overlay">
                   <div className="overlay-item fps">
+                    <Zap size={14} />
                     FPS: {stats.fps?.toFixed(1) || "0"}
                   </div>
-                  <div className="overlay-item camera">
-                    {cameraInfo?.name || "Cámara activa"}
+                  <div className="overlay-item buffer">
+                    Buffer: {stats.buffer_current}/{stats.buffer_max}
                   </div>
+                  {systemStatus?.model_info && (
+                    <div className="overlay-item model">
+                      <Cpu size={14} />
+                      Modelo: {systemStatus.model_info.type} (
+                      {systemStatus.model_info.features} features)
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -179,62 +248,83 @@ const Translation = () => {
                 <button
                   className="info-toggle"
                   onClick={() => setShowAdvancedInfo(!showAdvancedInfo)}
+                  title="Información avanzada"
                 >
                   <Settings size={16} />
                 </button>
               </div>
 
               <div className="translation-content">
-                <div className="translation-text">
+                {/* Texto de predicción */}
+                <div
+                  className={`translation-text status-${getPredictionStatus(
+                    currentTranslation
+                  )}`}
+                >
                   {currentTranslation || "Esperando detección..."}
                 </div>
 
                 {/* Barra de confianza */}
-                <div className="confidence-section">
-                  <div className="confidence-bar">
-                    <div
-                      className="confidence-fill"
-                      style={{
-                        width: `${confidence * 100}%`,
-                        backgroundColor: getConfidenceColor(confidence),
-                      }}
-                    />
-                  </div>
-                  <span className="confidence-value">
-                    {Math.round(confidence * 100)}% confianza
-                  </span>
-                </div>
-
-                {/* Estado básico */}
-                <div className="status-indicators">
-                  <div className="status-item">
-                    <Zap size={16} />
-                    <span>
-                      Estado: {isConnected ? "Conectado" : "Desconectado"}
+                {confidence > 0 && (
+                  <div className="confidence-section">
+                    <div className="confidence-bar">
+                      <div
+                        className="confidence-fill"
+                        style={{
+                          width: `${confidence * 100}%`,
+                          backgroundColor: getConfidenceColor(confidence),
+                        }}
+                      />
+                    </div>
+                    <span className="confidence-value">
+                      {Math.round(confidence * 100)}% confianza
                     </span>
                   </div>
-                  {cameraInfo?.name && (
-                    <div className="status-item">
-                      <Camera size={16} />
-                      <span>Cámara: {cameraInfo.name}</span>
+                )}
+
+                {/* Estado de sesión */}
+                {currentSession && (
+                  <div className="session-info">
+                    <div className="session-badge">
+                      <div className="recording-indicator" />
+                      <span>Sesión activa: #{currentSession}</span>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* Info avanzada */}
                 {showAdvancedInfo && (
                   <div className="advanced-info">
+                    <h4>Métricas del Sistema</h4>
                     <div className="info-grid">
                       <div className="info-item">
                         <label>FPS:</label>
                         <span>{stats.fps?.toFixed(1) || "0"}</span>
                       </div>
                       <div className="info-item">
-                        <label>Procesamiento:</label>
+                        <label>Inferencia:</label>
+                        <span>{stats.inference_time_ms?.toFixed(1)} ms</span>
+                      </div>
+                      <div className="info-item">
+                        <label>CPU:</label>
+                        <span>{stats.cpu?.toFixed(1) || "0"}%</span>
+                      </div>
+                      <div className="info-item">
+                        <label>RAM:</label>
+                        <span>{stats.ram?.toFixed(1) || "0"}%</span>
+                      </div>
+                      <div className="info-item">
+                        <label>Buffer:</label>
                         <span>
-                          {(stats.processingTime * 1000).toFixed(1)} ms
+                          {stats.buffer_current}/{stats.buffer_max}
                         </span>
                       </div>
+                      {systemStatus?.model_info && (
+                        <div className="info-item">
+                          <label>Clases:</label>
+                          <span>{systemStatus.model_info.classes}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -250,24 +340,31 @@ const Translation = () => {
               className={`control-btn ${isProcessing ? "stop" : "start"}`}
               onClick={isProcessing ? handleStopSession : handleStartSession}
               disabled={!isConnected}
+              title={
+                isProcessing
+                  ? "Detener sesión de grabación"
+                  : "Iniciar sesión de grabación"
+              }
             >
               {isProcessing ? <Square size={16} /> : <Play size={16} />}
-              {isProcessing ? "Detener" : "Comenzar"}
+              {isProcessing ? "Detener Sesión" : "Iniciar Sesión"}
             </button>
 
             <button
               className="control-btn secondary"
               onClick={handleResetClassifier}
               disabled={!isConnected}
+              title="Reiniciar buffer del clasificador"
             >
               <RotateCcw size={16} />
-              Reiniciar Clasificador
+              Reiniciar
             </button>
 
             <button
               className="control-btn secondary"
-              onClick={handleGetStatus}
+              onClick={getStatus}
               disabled={!isConnected}
+              title="Obtener estado del sistema"
             >
               <Activity size={16} />
               Estado
@@ -280,19 +377,23 @@ const Translation = () => {
           <div className="history-container">
             <div className="history-header">
               <h3>Historial de Traducciones</h3>
-              <span>{translationsHistory.length} registros</span>
+              <span className="history-count">
+                {translationsHistory.length} registro
+                {translationsHistory.length !== 1 ? "s" : ""}
+              </span>
             </div>
 
             <div className="translations-list">
               {translationsHistory.length === 0 ? (
                 <div className="empty-history">
                   <p>No hay traducciones recientes</p>
+                  <span>Las señas detectadas aparecerán aquí</span>
                 </div>
               ) : (
                 translationsHistory.map((t, i) => (
-                  <div key={i} className="translation-item">
+                  <div key={`${t.timestamp}-${i}`} className="translation-item">
                     <div className="translation-main">
-                      <span>{t.text}</span>
+                      <span className="item-text">{t.text}</span>
                       <span
                         className="confidence-badge"
                         style={{
@@ -302,7 +403,9 @@ const Translation = () => {
                         {Math.round(t.confidence * 100)}%
                       </span>
                     </div>
-                    <div className="translation-meta">{t.timestamp}</div>
+                    <div className="translation-meta">
+                      <span className="timestamp">{t.timestamp}</span>
+                    </div>
                   </div>
                 ))
               )}

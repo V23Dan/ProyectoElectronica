@@ -27,7 +27,7 @@ class CameraManager:
         """Intenta conectar automáticamente una cámara (ESP32 o local)."""
         if auto_connect:
             # Intenta ESP32
-            if self.connect_esp32("http://192.168.126.15:81/"):
+            if self.connect_esp32("http://192.168.77.15:81/"):
                 logger.info("Conectado a cámara ESP32-CAM.")
                 return True
             # Si falla, intenta cámara local
@@ -47,7 +47,7 @@ class CameraManager:
         self.capture = cap
         self.is_esp32 = True
         self.esp32_url = url
-        logger.info(f"✅ ESP32-CAM conectada a stream {url}")
+        logger.info(f"ESP32-CAM conectada a stream {url}")
         return True
 
 
@@ -59,7 +59,7 @@ class CameraManager:
                 self.last_frame = frame
                 return frame
             else:
-                logger.warning("⚠️ No se pudo leer frame de la cámara.")
+                logger.warning("No se pudo leer frame de la cámara.")
         return None
 
 
@@ -78,7 +78,7 @@ class CameraManager:
         """Permite cambiar entre cámaras (según configuración enviada)."""
         camera_type = config.get("type", "local")
         if camera_type == "esp32":
-            return self.connect_esp32(config.get("url", "http://192.168.126.15:81/"))
+            return self.connect_esp32(config.get("url", "http://192.168.77.15:81/"))
         elif camera_type == "local":
             return self.connect_local(config.get("index", 0))
         return False

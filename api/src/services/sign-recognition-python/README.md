@@ -18,7 +18,7 @@ env\Scripts\activate
 
 3. Activar el servidor FastApi:
 ```bash
-uvicorn app.main:app --host 192.168.56.1 --port 8000
+python -m uvicorn app.main:app --host 192.168.56.1 --port 8000
 ```
 
 Apagar servidor FastApi:
