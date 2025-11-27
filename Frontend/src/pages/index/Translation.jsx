@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSocket } from "../../context/SocketContext";
-import Notifications from "../../components/Notifications/Notifications";
 import {
   Play,
   Square,
@@ -12,6 +11,8 @@ import {
   Wifi,
   WifiOff,
   Cpu,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import "./Translation.css";
 
@@ -21,8 +22,6 @@ const Translation = () => {
     isConnected,
     systemStatus,
     currentSession,
-    notifications,
-    removeNotification,
     getStatus,
     resetClassifier,
     startSession,
@@ -35,6 +34,13 @@ const Translation = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [translationsHistory, setTranslationsHistory] = useState([]);
   const [showAdvancedInfo, setShowAdvancedInfo] = useState(false);
+  
+  // ========== NUEVOS ESTADOS PARA TTS ==========
+  const [isTTSEnabled, setIsTTSEnabled] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speechSynthRef = useRef(null);
+  const lastSpokenTextRef = useRef("");
+  
   const [stats, setStats] = useState({
     fps: 0,
     cpu: 0,
@@ -44,7 +50,121 @@ const Translation = () => {
     buffer_max: 30,
   });
 
-  // 🧠 Manejar mensajes del WebSocket de video
+  // ========== INICIALIZAR SPEECH SYNTHESIS ==========
+  useEffect(() => {
+    if ('speechSynthesis' in window) {
+      speechSynthRef.current = window.speechSynthesis;
+      console.log("Text-to-Speech disponible");
+      
+      // Listar voces disponibles (opcional, para debug)
+      const loadVoices = () => {
+        const voices = speechSynthRef.current.getVoices();
+        console.log("Voces disponibles:", voices.filter(v => v.lang.startsWith('es')));
+      };
+      
+      loadVoices();
+      if (speechSynthRef.current.onvoiceschanged !== undefined) {
+        speechSynthRef.current.onvoiceschanged = loadVoices;
+      }
+    } else {
+      console.warn("Text-to-Speech no disponible en este navegador");
+    }
+    
+    // Cleanup: detener cualquier speech al desmontar
+    return () => {
+      if (speechSynthRef.current) {
+        speechSynthRef.current.cancel();
+      }
+    };
+  }, []);
+
+  // ========== FUNCIÓN PARA HABLAR ==========
+  const speakText = (text) => {
+    if (!speechSynthRef.current || !isTTSEnabled) return;
+    
+    // Evitar hablar el mismo texto repetidamente
+    if (text === lastSpokenTextRef.current) {
+      return;
+    }
+    
+    // Cancelar cualquier speech en curso
+    speechSynthRef.current.cancel();
+    
+    // Filtrar textos que no queremos leer
+    const ignoredTexts = [
+      "NO_HANDS_DETECTED",
+      "LOADING_SEQUENCE",
+      "BAJA_CONFIANZA",
+      "Esperando detección...",
+    ];
+    
+    if (ignoredTexts.includes(text) || text.startsWith("ERROR")) {
+      return;
+    }
+    
+    // Crear el utterance (mensaje de voz)
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Configurar voz en español
+    const voices = speechSynthRef.current.getVoices();
+    const spanishVoice = voices.find(voice => 
+      voice.lang.startsWith('es-') || voice.lang === 'es'
+    );
+    
+    if (spanishVoice) {
+      utterance.voice = spanishVoice;
+    }
+    
+    // Configuraciones de voz
+    utterance.lang = 'es-CO'; // Español de España (o 'es-MX', 'es-CO', etc.)
+    utterance.rate = 1.0;     // Velocidad (0.1 - 10)
+    utterance.pitch = 1.0;    // Tono (0 - 2)
+    utterance.volume = 1.0;   // Volumen (0 - 1)
+    
+    // Eventos
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      lastSpokenTextRef.current = text;
+      console.log("Hablando:", text);
+    };
+    
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      console.log("Finalizado speech");
+    };
+    
+    utterance.onerror = (event) => {
+      setIsSpeaking(false);
+      console.error("Error en speech:", event);
+    };
+    
+    // Hablar
+    speechSynthRef.current.speak(utterance);
+  };
+
+  // ========== TOGGLE TTS ==========
+  const toggleTTS = () => {
+    const newState = !isTTSEnabled;
+    setIsTTSEnabled(newState);
+    
+    // Si se desactiva, detener cualquier speech en curso
+    if (!newState && speechSynthRef.current) {
+      speechSynthRef.current.cancel();
+      setIsSpeaking(false);
+      lastSpokenTextRef.current = "";
+    }
+    
+    console.log(newState ? "TTS Activado" : "TTS Desactivado");
+  };
+
+  // ========== DETENER SPEECH MANUALMENTE ==========
+  const stopSpeaking = () => {
+    if (speechSynthRef.current) {
+      speechSynthRef.current.cancel();
+      setIsSpeaking(false);
+    }
+  };
+
   useEffect(() => {
     if (!videoSocket) return;
 
@@ -53,7 +173,6 @@ const Translation = () => {
         const data = JSON.parse(event.data);
 
         if (data.type === "video_frame") {
-          // 🎥 Renderizar frame en canvas
           if (data.frame && videoCanvasRef.current) {
             const ctx = videoCanvasRef.current.getContext("2d");
             const img = new Image();
@@ -75,12 +194,12 @@ const Translation = () => {
             img.src = data.frame;
           }
 
-          // ✋ Actualizar predicción
+          // Actualizar predicción
           if (data.prediction) {
             setCurrentTranslation(data.prediction);
             setConfidence(data.confidence || 0);
 
-            // Guardar en historial solo predicciones válidas y de alta confianza
+            // ========== HABLAR LA TRADUCCIÓN ==========
             if (
               data.confidence > 0.7 &&
               data.prediction !== "NO_HANDS_DETECTED" &&
@@ -88,6 +207,10 @@ const Translation = () => {
               data.prediction !== "BAJA_CONFIANZA" &&
               !data.prediction.startsWith("ERROR")
             ) {
+              // Hablar la nueva traducción
+              speakText(data.prediction);
+              
+              // Guardar en historial
               setTranslationsHistory((prev) => {
                 // Evitar duplicados consecutivos
                 if (prev.length > 0 && prev[0].text === data.prediction) {
@@ -106,7 +229,7 @@ const Translation = () => {
             }
           }
 
-          // 📊 Actualizar métricas de rendimiento
+          // Actualizar métricas de rendimiento
           if (data.performance) {
             setStats({
               fps: data.performance.fps || 0,
@@ -125,9 +248,8 @@ const Translation = () => {
 
     videoSocket.addEventListener("message", handleMessage);
     return () => videoSocket.removeEventListener("message", handleMessage);
-  }, [videoSocket]);
+  }, [videoSocket, isTTSEnabled]); // Agregar isTTSEnabled como dependencia
 
-  // 🔘 Controladores de sesión
   const handleStartSession = () => {
     setIsProcessing(true);
     startSession();
@@ -136,6 +258,7 @@ const Translation = () => {
   const handleStopSession = () => {
     setIsProcessing(false);
     stopSession();
+    stopSpeaking(); // Detener speech al detener sesión
   };
 
   const handleResetClassifier = () => {
@@ -143,9 +266,10 @@ const Translation = () => {
     setTranslationsHistory([]);
     setCurrentTranslation("");
     setConfidence(0);
+    stopSpeaking(); // Detener speech al resetear
+    lastSpokenTextRef.current = "";
   };
 
-  // 🎨 Utilidades de UI
   const getConfidenceColor = (conf) => {
     if (conf > 0.8) return "#10b981"; // verde
     if (conf > 0.6) return "#f59e0b"; // amarillo
@@ -160,14 +284,14 @@ const Translation = () => {
     return "detectado";
   };
 
-  // 🟢 Pedir estado al conectarse
+  // Pedir estado al conectarse
   useEffect(() => {
     if (isConnected) {
       getStatus();
     }
   }, [isConnected, getStatus]);
 
-  // 🔄 Sincronizar estado de sesión
+  // Sincronizar estado de sesión
   useEffect(() => {
     if (currentSession !== null) {
       setIsProcessing(true);
@@ -178,12 +302,6 @@ const Translation = () => {
 
   return (
     <div className="translation-page">
-      {/* Sistema de notificaciones */}
-      {/* <Notifications
-        notifications={notifications}
-        onRemove={removeNotification}
-      /> */}
-
       <div className="translation-layout">
         {/* === SECCIÓN PRINCIPAL === */}
         <div className="main-display">
@@ -232,6 +350,14 @@ const Translation = () => {
                       <Cpu size={14} />
                       Modelo: {systemStatus.model_info.type} (
                       {systemStatus.model_info.features} features)
+                    </div>
+                  )}
+                  
+                  {/* ========== INDICADOR TTS ========== */}
+                  {isTTSEnabled && (
+                    <div className={`overlay-item tts ${isSpeaking ? 'speaking' : ''}`}>
+                      <Volume2 size={14} />
+                      {isSpeaking ? "Hablando..." : "TTS Activo"}
                     </div>
                   )}
                 </div>
@@ -325,6 +451,10 @@ const Translation = () => {
                           <span>{systemStatus.model_info.classes}</span>
                         </div>
                       )}
+                      <div className="info-item">
+                        <label>TTS:</label>
+                        <span>{isTTSEnabled ? "Activo" : "Inactivo"}</span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -348,6 +478,17 @@ const Translation = () => {
             >
               {isProcessing ? <Square size={16} /> : <Play size={16} />}
               {isProcessing ? "Detener Sesión" : "Iniciar Sesión"}
+            </button>
+
+            {/* ========== BOTÓN TTS ========== */}
+            <button
+              className={`control-btn ${isTTSEnabled ? 'tts-active' : 'secondary'}`}
+              onClick={toggleTTS}
+              disabled={!isConnected}
+              title={isTTSEnabled ? "Desactivar lectura por voz" : "Activar lectura por voz"}
+            >
+              {isTTSEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+              {isTTSEnabled ? "Voz Activada" : "Activar Voz"}
             </button>
 
             <button

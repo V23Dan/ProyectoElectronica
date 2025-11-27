@@ -493,12 +493,101 @@
   color: #666;
 }
 
+/* ========================================
+   ESTILOS ADICIONALES PARA TEXT-TO-SPEECH
+   Agregar al final de Translation.css
+   ======================================== */
+
+/* Botón TTS Activo */
+.control-btn.tts-active {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: white;
+  border: 2px solid #a78bfa;
+}
+
+.control-btn.tts-active:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  border-color: #c4b5fd;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(139, 92, 246, 0.4);
+}
+
+/* Overlay TTS en el video */
+.overlay-item.tts {
+  border-color: #8b5cf6;
+  color: #a78bfa;
+  animation: pulse-tts 2s infinite;
+}
+
+.overlay-item.tts.speaking {
+  border-color: #10b981;
+  color: #10b981;
+  animation: pulse-speaking 1s infinite;
+}
+
+/* Animaciones */
+@keyframes pulse-tts {
+  0%,
+  100% {
+    opacity: 1;
+    border-color: #8b5cf6;
+  }
+  50% {
+    opacity: 0.7;
+    border-color: #a78bfa;
+  }
+}
+
+@keyframes pulse-speaking {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);
+  }
+}
+
+/* Icono de volumen animado */
+.control-btn.tts-active svg {
+  animation: volume-wave 1.5s ease-in-out infinite;
+}
+
+@keyframes volume-wave {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.1);
+  }
+  75% {
+    transform: scale(0.95);
+  }
+}
+
+/* Estado de TTS en info avanzada */
+.info-item:has(label:contains("TTS")) span {
+  font-weight: 700;
+}
+
+/* Responsive: Ajustar botones en móvil */
+@media (max-width: 768px) {
+  .control-btn.tts-active {
+    min-width: auto;
+    width: 100%;
+  }
+}
 /* === RESPONSIVE === */
 @media (max-width: 1200px) {
   .main-display {
     grid-template-columns: 1fr;
   }
-  
+
   .translation-text {
     font-size: 2.5rem;
     min-height: 100px;
@@ -509,24 +598,24 @@
   .translation-page {
     padding: 1rem;
   }
-  
+
   .video-controls {
     flex-direction: column;
   }
-  
+
   .control-btn {
     min-width: auto;
     width: 100%;
   }
-  
+
   .translation-text {
     font-size: 2rem;
   }
-  
+
   .info-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .video-overlay {
     top: 1rem;
     left: 1rem;
@@ -535,8 +624,13 @@
 
 /* === ANIMACIONES === */
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes fadeIn {

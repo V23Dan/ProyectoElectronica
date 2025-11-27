@@ -12,7 +12,7 @@ const Header = () => {
       <div className="header-content">
         <div className="logo">
           <Camera className="logo-icon" />
-          <h1>SeñasCol</h1>
+          <h1>SignTech</h1>
           <span className="beta-tag">Beta</span>
         </div>
         
