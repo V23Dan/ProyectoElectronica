@@ -1,4 +1,3 @@
-// src/pages/Home.js
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Camera, Cpu, Database, Zap, Users, Award } from 'lucide-react';
@@ -49,7 +48,6 @@ const Home = () => {
 
   return (
     <div className="home-page">
-      {/* Hero Section */}
       <section className="hero">
         <div className="hero-content">
           <h1 className="hero-title">
@@ -78,7 +76,6 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Features Section */}
       <section className="features">
         <div className="container">
           <h2 className="section-title">Características Principales</h2>
@@ -96,7 +93,6 @@ const Home = () => {
         </div>
       </section>
 
-      {/* How It Works */}
       <section className="how-it-works">
         <div className="container">
           <h2 className="section-title">¿Cómo Funciona?</h2>
@@ -125,7 +121,6 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Tech Stack */}
       <section className="tech-stack">
         <div className="container">
           <h2 className="section-title">Tecnologías Utilizadas</h2>
@@ -140,7 +135,6 @@ const Home = () => {
         </div>
       </section>
 
-      {/* CTA Section */}
       <section className="cta-section">
         <div className="container">
           <h2>¿Listo para Comenzar?</h2>

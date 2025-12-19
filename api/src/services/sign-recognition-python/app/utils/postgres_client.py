@@ -76,7 +76,6 @@ class PostgresClient:
             logging.error(f"Error al registrar el evento del sistema para la sesión {session_id}: {e}")
             raise
 
-    # Obtener traducciones de una sesión (método adicional si lo necesitas)
     async def get_session_translations(self, session_id: int) -> List[Dict]:
         await self.postgres_connection()
         try:

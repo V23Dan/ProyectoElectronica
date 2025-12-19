@@ -7,8 +7,7 @@ app.use(cors());
 
 import systemController from "./src/controllers/systemController.js";
 
-//Rutes
-// --- HEALTH CHECK ---
+
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
@@ -18,7 +17,6 @@ app.get("/health", (req, res) => {
   });
 });
 
-// --- SYSTEM STATUS ---
 app.get("/api/system/status", async (req, res) => {
   try {
     const status = systemController.getSystemStatus();
@@ -52,7 +50,6 @@ app.get("/api/system/stats", async (req, res) => {
   }
 });
 
-// --- CALIBRATION ---
 app.get("/api/calibration", (req, res) => {
   const calibration = systemController.getCurrentCalibration();
   res.json({
@@ -105,7 +102,6 @@ app.get("/api/calibration/history", async (req, res) => {
   }
 });
 
-// --- DEVICES ---
 app.get("/api/devices", (req, res) => {
   const devices = deviceController.getConnectedDevices();
   res.json({
@@ -179,7 +175,6 @@ app.post("/api/devices/:deviceId/servo", (req, res) => {
   });
 });
 
-// --- SESSIONS ---
 app.get("/api/sessions", async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20;
@@ -268,7 +263,6 @@ app.get("/api/sessions/:id/logs", async (req, res) => {
   }
 });
 
-// --- TRANSLATIONS ---
 app.get("/api/translations", async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
@@ -318,10 +312,8 @@ app.post("/api/translations", async (req, res) => {
       confidence,
     });
 
-    // Enviar a dispositivos conectados
     deviceController.broadcastTranslation(textOutput, confidence);
 
-    // Notificar al frontend vía Socket.IO
     io.emit("new_translation", {
       translation,
       timestamp: new Date(),

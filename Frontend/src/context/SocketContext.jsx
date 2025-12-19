@@ -36,8 +36,7 @@ export const SocketProvider = ({ children }) => {
     };
     
     setNotifications(prev => [notification, ...prev.slice(0, 4)]);
-    
-    // Auto-remover después de 5 segundos
+
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== notification.id));
     }, 5000);
@@ -90,7 +89,6 @@ export const SocketProvider = ({ children }) => {
               }));
               break;
             
-            // video_frame se maneja en Translation.jsx
             default:
               break;
           }
@@ -108,7 +106,6 @@ export const SocketProvider = ({ children }) => {
         console.warn(`WS de video cerrado (código: ${event.code})`);
         setIsConnected(false);
         
-        // Intentar reconectar
         if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttemptsRef.current++;
           addNotification('warning', `Reconectando... (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`);
@@ -120,7 +117,6 @@ export const SocketProvider = ({ children }) => {
       addNotification('error', 'Error al crear conexión de video');
     }
 
-    // CONTROL SOCKET
     try {
       controlSocketRef.current = new WebSocket(`${BACKEND_URL}/ws/control`);
 
@@ -193,7 +189,6 @@ export const SocketProvider = ({ children }) => {
     }
   }, [BACKEND_URL, addNotification]);
 
-  // Montaje / desmontaje
   useEffect(() => {
     connectWebSockets();
     
@@ -204,7 +199,6 @@ export const SocketProvider = ({ children }) => {
     };
   }, [connectWebSockets]);
 
-  // Enviar comandos de control
   const sendControlCommand = useCallback((command, data = {}) => {
     if (controlSocketRef.current?.readyState === WebSocket.OPEN) {
       const payload = { command, ...data };
@@ -216,7 +210,6 @@ export const SocketProvider = ({ children }) => {
     }
   }, [addNotification]);
 
-  // Comandos específicos (helpers)
   const getStatus = useCallback(() => {
     sendControlCommand('get_status');
   }, [sendControlCommand]);
@@ -241,7 +234,6 @@ export const SocketProvider = ({ children }) => {
     }
   }, [sendControlCommand, currentSession]);
 
-  // Limpiar notificación específica
   const removeNotification = useCallback((id) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
   }, []);

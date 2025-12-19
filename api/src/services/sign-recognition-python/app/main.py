@@ -105,7 +105,6 @@ async def notify_system_event_to_nodejs(
 ):
     """
     Registra un evento del sistema en Node.js
-    (esto podrías hacerlo también directamente con db_client)
     """
     try:
         response = await http_client.post(
@@ -127,7 +126,6 @@ async def notify_system_event_to_nodejs(
 class SharedState:
     def __init__(self):
         self.lock = threading.Lock()
-        # CAMBIO: Ahora guardamos el string listo para enviar, no el frame raw
         self.latest_message = None
         self.is_running = False
         self.current_session_id = None
@@ -138,7 +136,6 @@ class SharedState:
 
     def get_latest(self):
         with self.lock:
-            # Devolvemos una copia del diccionario si existe
             return self.latest_message.copy() if self.latest_message else None
 
     def set_running(self, running: bool):
@@ -190,17 +187,15 @@ def video_processing_loop():
 
     last_prediction = None
     last_prediction_time = 0
-    prediction_cooldown = 2.0  # segundos entre traducciones iguales
+    prediction_cooldown = 2.0 
 
     while shared_state.is_active():
         try:
-            # 1. Procesamiento IA (Heavy)
             result = video_processor.process_next_frame()
 
             if result is not None:
                 frame, prediction, confidence = result
 
-                # Calcular FPS real del procesamiento
                 fps_counter += 1
                 if time.time() - fps_start >= 1.0:
                     processing_fps = fps_counter
@@ -210,7 +205,6 @@ def video_processing_loop():
                     processing_fps = video_processor.performance.get_fps()
 
                 try:
-                    # Calidad 60 es suficiente para preview y mucho más rápido
                     _, buffer = cv2.imencode(
                         ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 60]
                     )
@@ -220,7 +214,6 @@ def video_processing_loop():
                     logger.error(f"Error codificando frame: {e}")
                     frame_uri = None
 
-                # 3. Preparar el mensaje final JSON
                 if frame_uri:
                     stats = {
                         "type": "video_frame",
@@ -238,15 +231,10 @@ def video_processing_loop():
                         },
                         "camera_info": camera_manager.get_status(),
                     }
-                    # Actualizar estado compartido con el mensaje listo
                     shared_state.update(stats)
 
                 current_time = time.time()
 
-                # Solo enviar si:
-                # 1. La confianza es suficiente
-                # 2. No es la misma predicción reciente (evitar spam)
-                # 3. Hay una sesión activa
                 if (
                     confidence > 0.7
                     and prediction != "NADA"
@@ -255,13 +243,11 @@ def video_processing_loop():
                         or current_time - last_prediction_time > prediction_cooldown
                     )
                 ):
-                    # Obtener sesión actual (deberías tener esto en alguna variable global)
                     current_session_id = getattr(
                         shared_state, "current_session_id", None
                     )
 
                     if current_session_id:
-                        # Enviar a Node.js de forma asíncrona
                         asyncio.create_task(
                             notify_translation_to_nodejs(
                                 session_id=current_session_id,
@@ -285,12 +271,10 @@ def video_processing_loop():
     logger.info("Thread de procesamiento de video detenido")
 
 
-# Variable global para el thread
 processing_thread: Optional[threading.Thread] = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Inicialización al arrancar la aplicación"""
     global processing_thread
 
     logger.info("=" * 70)
@@ -299,7 +283,6 @@ async def startup_event():
 
     calibration = await get_calibration_from_nodejs()
     if calibration:
-        # Aplicar calibración al clasificador o procesador
         logger.info(f"Calibración aplicada: {calibration}")
 
     # Inicializar cámara
@@ -337,7 +320,6 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Limpieza al cerrar la aplicación"""
     logger.info("Cerrando aplicación...")
     # Detener thread de procesamiento de video
     await http_client.aclose()
@@ -357,14 +339,12 @@ async def websocket_video(websocket: WebSocket):
 
     try:
         while True:
-            # El hilo principal solo lee y envía. Cero procesamiento.
             message = shared_state.get_latest()
 
             if message is not None:
                 await websocket.send_text(json.dumps(message))
 
-            # Importante: ceder el control para mantener el heartbeat del socket
-            await asyncio.sleep(0.033)  # ~30 FPS cap de envío
+            await asyncio.sleep(0.033)  
 
     except WebSocketDisconnect:
         connected_video_clients.discard(websocket)
@@ -375,16 +355,7 @@ async def websocket_video(websocket: WebSocket):
 
 @app.websocket("/ws/control")
 async def websocket_control(websocket: WebSocket):
-    """
-    WebSocket para comandos de control.
 
-    Comandos soportados:
-    - get_status: Estado del sistema
-    - reset_classifier: Reiniciar clasificador
-    - switch_camera: Cambiar cámara
-    - start_session: Iniciar sesión de registro
-    - stop_session: Detener sesión
-    """
     await websocket.accept()
     connected_control_clients.add(websocket)
     client_id = id(websocket)
@@ -396,7 +367,6 @@ async def websocket_control(websocket: WebSocket):
             data = json.loads(message)
             command = data.get("command")
 
-            # GET STATUS
             if command == "get_status":
                 await websocket.send_json(
                     {
@@ -415,7 +385,6 @@ async def websocket_control(websocket: WebSocket):
                     }
                 )
 
-            # RESET CLASSIFIER
             elif command == "reset_classifier":
                 try:
                     video_processor.reset_classifier()
@@ -432,7 +401,6 @@ async def websocket_control(websocket: WebSocket):
                         {"type": "error", "message": f"Error: {str(e)}"}
                     )
 
-            # SWITCH CAMERA
             elif command == "switch_camera":
                 camera_config = data.get("camera", {})
                 try:
@@ -451,7 +419,6 @@ async def websocket_control(websocket: WebSocket):
                         {"type": "error", "message": f"Error: {str(e)}"}
                     )
 
-            # START SESSION
             elif command == "start_session":
                 try:
                     session_id = await db_client.create_session()
@@ -466,7 +433,6 @@ async def websocket_control(websocket: WebSocket):
                         {"type": "error", "message": "Error creando sesión"}
                     )
 
-            # STOP SESSION
             elif command == "stop_session":
                 session_id = data.get("session_id")
                 try:
@@ -483,7 +449,6 @@ async def websocket_control(websocket: WebSocket):
                         {"type": "error", "message": "Error finalizando sesión"}
                     )
 
-            # COMANDO DESCONOCIDO
             else:
                 await websocket.send_json(
                     {"type": "error", "message": f"Comando desconocido: {command}"}
@@ -498,7 +463,6 @@ async def websocket_control(websocket: WebSocket):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
     return {
         "status": "ok",
         "service": "Hybrid Sign Language Recognition",
@@ -518,13 +482,11 @@ async def health_check():
 
 @app.get("/api/vocabulary")
 async def get_vocabulary():
-    """Retorna el vocabulario completo del modelo"""
     return {"vocabulary": classifier.classes, "total_classes": len(classifier.classes)}
 
 
 @app.post("/api/sessions/start")
 async def start_session():
-    """Inicia una nueva sesión de registro"""
     try:
         session_id = await db_client.create_session()
         await db_client.log_system_event(
@@ -545,7 +507,6 @@ async def start_session():
 
 @app.post("/api/sessions/end/{session_id}")
 async def end_session(session_id: int):
-    """Finaliza una sesión existente"""
     try:
         await db_client.end_session(session_id)
         await db_client.log_system_event(

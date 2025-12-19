@@ -23,7 +23,7 @@ class CameraManager:
 
     def initialize(self, auto_connect: bool = True) -> bool:
         if auto_connect:
-            esp_url = "http://192.168.217.15:81/"
+            esp_url = "http://192.168.249.15:81/"
             logger.info("Intentando conectar a cámaras automáticamente...")
 
             if self.connect_esp32(esp_url):
@@ -107,7 +107,7 @@ class CameraManager:
     def switch_camera(self, config: Dict[str, Any]) -> bool:
         camera_type = config.get("type", "local")
         if camera_type == "esp32":
-            return self.connect_esp32(config.get("url", "http://192.168.217.15:81/"))
+            return self.connect_esp32(config.get("url", "http://192.168.249.15:81/"))
         elif camera_type == "local":
             return self.connect_local(config.get("index", 0))
         return False
@@ -129,7 +129,6 @@ class CameraManager:
         return {"local": available, "esp32": self.esp32_url}
 
     def close(self):
-        """Detiene hilo y libera cámara."""
         self.thread_running = False
 
         if self.frame_thread is not None:

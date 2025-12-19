@@ -14,10 +14,8 @@ class SystemController {
     };
   }
 
-  // Inicializar sistema
   async initialize() {
     try {
-      // Cargar calibración activa
       await this.loadActiveCalibration();
       
       console.log('System Controller inicializado');
@@ -28,10 +26,8 @@ class SystemController {
     }
   }
 
-  // Cargar calibración activa desde BD
   async loadActiveCalibration() {
     try {
-      // Buscar la calibración más reciente
       const calibration = await Calibration.findOne({
         order: [['createdAt', 'DESC']]
       });
@@ -43,7 +39,6 @@ class SystemController {
           confidenceThreshold: calibration.confidenceThreshold
         };
         
-        // Actualizar umbrales en el device controller
         deviceController.updateThresholds(
           this.currentCalibration.distanceThreshold - 50,
           this.currentCalibration.distanceThreshold + 50,
@@ -52,7 +47,6 @@ class SystemController {
 
         console.log('Calibración cargada:', this.currentCalibration);
       } else {
-        // Crear calibración por defecto
         const defaultCalibration = await Calibration.create({
           distanceThreshold: 100.0,
           confidenceThreshold: 0.7
@@ -72,7 +66,6 @@ class SystemController {
     }
   }
 
-  // Actualizar calibración
   async updateCalibration(distanceThreshold, confidenceThreshold) {
     try {
       const newCalibration = await Calibration.create({
@@ -86,7 +79,6 @@ class SystemController {
         confidenceThreshold
       };
 
-      // Actualizar en device controller
       deviceController.updateThresholds(
         distanceThreshold - 50,
         distanceThreshold + 50,
@@ -108,12 +100,10 @@ class SystemController {
     }
   }
 
-  // Obtener calibración actual
   getCurrentCalibration() {
     return this.currentCalibration;
   }
 
-  // Registrar evento del sistema
   async logSystemEvent(sessionId, eventType, message, severity = 'INFO') {
     try {
       await SystemLog.create({
@@ -129,7 +119,6 @@ class SystemController {
     }
   }
 
-  // Verificar estado de componentes
   async checkSystemHealth() {
     const health = {
       database: false,
@@ -138,7 +127,6 @@ class SystemController {
       timestamp: new Date()
     };
 
-    // Verificar base de datos
     try {
       await Calibration.findOne();
       health.database = true;
@@ -146,19 +134,15 @@ class SystemController {
       console.error('Base de datos no disponible');
     }
 
-    // Verificar ESP32 Base
     const devices = deviceController.getConnectedDevices();
     health.esp32Base = devices.length > 0;
 
-    // Verificar Python Microservice (podrías hacer un ping al puerto 8000)
-    // Por ahora lo dejamos como false hasta implementar el check
     health.pythonMicroservice = false;
 
     this.systemStatus = health;
     return health;
   }
 
-  // Obtener estado del sistema
   getSystemStatus() {
     return {
       ...this.systemStatus,
@@ -168,11 +152,9 @@ class SystemController {
     };
   }
 
-  // Reiniciar componentes
   async restartComponent(component) {
     switch (component) {
       case 'esp32':
-        // Enviar comando de reinicio al ESP32
         const devices = deviceController.getConnectedDevices();
         if (devices.length > 0) {
           deviceController.broadcastToDevices({
@@ -192,18 +174,15 @@ class SystemController {
     }
   }
 
-  // Configurar Socket.io para notificaciones en tiempo real
   setSocketIO(io) {
     this.io = io;
     
-    // Emitir actualizaciones de estado periódicamente
     setInterval(async () => {
       const status = this.getSystemStatus();
       this.io.emit('system_status_update', status);
-    }, 5000); // Cada 5 segundos
+    }, 5000); 
   }
 
-  // Obtener historial de logs de una sesión
   async getSessionLogs(sessionId, limit = 50) {
     try {
       const logs = await SystemLog.findAll({
@@ -219,7 +198,6 @@ class SystemController {
     }
   }
 
-  // Obtener estadísticas del sistema
   async getSystemStats() {
     try {
       const totalCalibrations = await Calibration.count();

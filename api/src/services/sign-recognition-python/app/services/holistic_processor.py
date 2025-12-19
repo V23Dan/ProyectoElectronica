@@ -7,32 +7,13 @@ logger = logging.getLogger(__name__)
 
 
 class HolisticProcessor:
-    """
-    Procesador que captura landmarks holísticos (Pose + Hands) usando MediaPipe.
-
-    Estructura de features (258 total):
-    - Pose: 132 features (33 landmarks × 4: x, y, z, visibility)
-    - Left Hand: 63 features (21 landmarks × 3: x, y, z)
-    - Right Hand: 63 features (21 landmarks × 3: x, y, z)
-    """
-
     def __init__(
         self,
         detection_conf: float = 0.5, 
         tracking_conf: float = 0.5, 
         model_complexity: int = 1,
     ):
-        """
-        Inicializa el procesador holistic.
 
-        Args:
-            detection_conf: Confianza mínima para detección inicial (0.0-1.0)
-            tracking_conf: Confianza mínima para tracking continuo (0.0-1.0)
-            model_complexity: Complejidad del modelo
-                - 0: Lite (más rápido, menos preciso) ← RECOMENDADO para rendimiento
-                - 1: Full (balanceado)
-                - 2: Heavy (más lento, más preciso)
-        """
         self.mp_holistic = mp.solutions.holistic
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
@@ -56,17 +37,7 @@ class HolisticProcessor:
         )
 
     def process(self, frame: np.ndarray):
-        """
-        Procesa un frame y extrae landmarks holísticos.
 
-        Args:
-            frame: Frame BGR de OpenCV (numpy array)
-
-        Returns:
-            tuple: (landmarks_vector, results)
-                - landmarks_vector: np.array de 258 features o None si hay error
-                - results: Objeto de resultados de MediaPipe (para visualización)
-        """
         if frame is None:
             logger.warning("Frame es None")
             return None, None
@@ -81,10 +52,8 @@ class HolisticProcessor:
             # Procesar con Holistic
             results = self.holistic.process(rgb_frame)
 
-            # Restaurar flag de escritura
             rgb_frame.flags.writeable = True
 
-            # Extraer landmarks en formato vectorial
             landmarks_vector = self._extract_keypoints(results)
 
             return landmarks_vector, results
@@ -94,22 +63,8 @@ class HolisticProcessor:
             return None, None
 
     def _extract_keypoints(self, results) -> np.ndarray:
-        """
-        Extrae y formatea keypoints en un vector de 258 features.
-
-        Estructura exacta del vector:
-        [0:132]   - Pose landmarks (33 × 4)
-        [132:195] - Left hand landmarks (21 × 3)
-        [195:258] - Right hand landmarks (21 × 3)
-
-        Args:
-            results: Resultados de MediaPipe Holistic
-
-        Returns:
-            np.array de shape (258,) con dtype float32
-        """
         try:
-            # 1. POSE LANDMARKS (132 features = 33 landmarks × 4 valores)
+
             if results.pose_landmarks:
                 pose = np.array(
                     [
@@ -125,45 +80,36 @@ class HolisticProcessor:
                     )
                     pose = np.zeros(132, dtype=np.float32)
             else:
-                # Sin pose detectada -> rellenar con zeros
                 pose = np.zeros(132, dtype=np.float32)
 
-            # 2. LEFT HAND LANDMARKS (63 features = 21 landmarks × 3 valores)
             if results.left_hand_landmarks:
                 left_hand = np.array(
                     [[lm.x, lm.y, lm.z] for lm in results.left_hand_landmarks.landmark]
                 ).flatten()
 
-                # Validación
                 if left_hand.shape[0] != 63:
                     logger.warning(
                         f"Left hand shape incorrecta: {left_hand.shape[0]}, esperada 63"
                     )
                     left_hand = np.zeros(63, dtype=np.float32)
             else:
-                # Sin mano izquierda detectada
                 left_hand = np.zeros(63, dtype=np.float32)
 
-            # 3. RIGHT HAND LANDMARKS (63 features = 21 landmarks × 3 valores)
             if results.right_hand_landmarks:
                 right_hand = np.array(
                     [[lm.x, lm.y, lm.z] for lm in results.right_hand_landmarks.landmark]
                 ).flatten()
 
-                # Validación
                 if right_hand.shape[0] != 63:
                     logger.warning(
                         f"Right hand shape incorrecta: {right_hand.shape[0]}, esperada 63"
                     )
                     right_hand = np.zeros(63, dtype=np.float32)
             else:
-                # Sin mano derecha detectada
                 right_hand = np.zeros(63, dtype=np.float32)
 
-            # 4. CONCATENAR TODO EN ORDEN
             keypoints = np.concatenate([pose, left_hand, right_hand])
 
-            # Validación final
             if keypoints.shape[0] != 258:
                 logger.error(
                     f"Shape final incorrecta: {keypoints.shape[0]}, esperada 258"
@@ -177,24 +123,12 @@ class HolisticProcessor:
             return np.zeros(258, dtype=np.float32)
 
     def draw_landmarks(self, frame: np.ndarray, results) -> np.ndarray:
-        """
-        Dibuja todos los landmarks detectados sobre el frame.
-
-        Args:
-            frame: Frame BGR de OpenCV
-            results: Resultados de MediaPipe Holistic
-
-        Returns:
-            Frame con landmarks dibujados (copia del original)
-        """
         if results is None:
             return frame
 
-        # Trabajar sobre una copia para no modificar el original
         annotated = frame.copy()
 
         try:
-            # 1. Dibujar POSE (esqueleto del cuerpo)
             if results.pose_landmarks:
                 self.mp_drawing.draw_landmarks(
                     annotated,
@@ -203,7 +137,6 @@ class HolisticProcessor:
                     landmark_drawing_spec=self.mp_drawing_styles.get_default_pose_landmarks_style(),
                 )
 
-            # 2. Dibujar MANO IZQUIERDA
             if results.left_hand_landmarks:
                 self.mp_drawing.draw_landmarks(
                     annotated,
@@ -213,7 +146,6 @@ class HolisticProcessor:
                     self.mp_drawing_styles.get_default_hand_connections_style(),
                 )
 
-            # 3. Dibujar MANO DERECHA
             if results.right_hand_landmarks:
                 self.mp_drawing.draw_landmarks(
                     annotated,
@@ -229,15 +161,6 @@ class HolisticProcessor:
         return annotated
 
     def has_hands(self, results) -> bool:
-        """
-        Verifica si hay al menos una mano detectada.
-
-        Args:
-            results: Resultados de MediaPipe Holistic
-
-        Returns:
-            bool: True si hay al menos una mano detectada
-        """
         if results is None:
             return False
 
@@ -247,30 +170,12 @@ class HolisticProcessor:
         )
 
     def has_pose(self, results) -> bool:
-        """
-        Verifica si hay pose detectada.
-
-        Args:
-            results: Resultados de MediaPipe Holistic
-
-        Returns:
-            bool: True si hay pose detectada
-        """
         if results is None:
             return False
 
         return results.pose_landmarks is not None
 
     def get_detection_info(self, results) -> dict:
-        """
-        Obtiene información detallada sobre las detecciones.
-
-        Args:
-            results: Resultados de MediaPipe Holistic
-
-        Returns:
-            dict con información de detecciones
-        """
         if results is None:
             return {
                 "pose": False,
@@ -286,7 +191,6 @@ class HolisticProcessor:
             "total_landmarks": 0,
         }
 
-        # Contar landmarks detectados
         if info["pose"]:
             info["total_landmarks"] += 33
         if info["left_hand"]:
@@ -297,7 +201,6 @@ class HolisticProcessor:
         return info
 
     def close(self):
-        """Libera recursos de MediaPipe"""
         try:
             if hasattr(self, "holistic"):
                 self.holistic.close()

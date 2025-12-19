@@ -17,15 +17,13 @@ class PerformanceMonitor:
         self.frame_times = deque(maxlen=window_size)
         self.start_time = None
         self.last_metrics_time = 0.0
-        self.metrics_interval = 5.0  # seg
+        self.metrics_interval = 5.0  
         self.last_metrics = {}
 
     def start_frame(self):
-        """Marca inicio de procesamiento de frame."""
         self.start_time = time.perf_counter()
 
     def end_frame(self):
-        """Marca fin de frame y registra duración."""
         if self.start_time is None:
             return
         duration = time.perf_counter() - self.start_time
@@ -33,14 +31,12 @@ class PerformanceMonitor:
         self.start_time = None
 
     def get_fps(self) -> float:
-        """Calcula FPS promedio."""
         if not self.frame_times:
             return 0.0
         avg_time = sum(self.frame_times) / len(self.frame_times)
         return 1.0 / avg_time if avg_time > 0 else 0.0
 
     def get_system_usage(self) -> Optional[Dict[str, float]]:
-        """Devuelve uso actual de CPU y RAM (si psutil disponible)."""
         if psutil is None:
             return None
         return {
@@ -49,7 +45,6 @@ class PerformanceMonitor:
         }
 
     def maybe_log_metrics(self):
-        """Imprime métricas cada cierto tiempo."""
         now = time.time()
         if now - self.last_metrics_time >= self.metrics_interval:
             fps = self.get_fps()

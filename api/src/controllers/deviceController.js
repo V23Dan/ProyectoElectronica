@@ -4,7 +4,7 @@ class DeviceController {
   constructor() {
     this.esp32Connections = new Map();
     this.distanceThreshold = { min: 50, max: 150, optimal: 100 };
-    this.io = null; // Socket.io para comunicación con frontend
+    this.io = null; 
     this.currentDistance = null;
     this.personDetected = false;
     this.lastUpdate = Date.now();
@@ -55,7 +55,7 @@ class DeviceController {
 
       // Manejar desconexión
       ws.on("close", () => {
-        console.log(`❌ ESP32-WROVER desconectado: ${deviceId}`);
+        console.log(` ESP32-WROVER desconectado: ${deviceId}`);
         this.esp32Connections.delete(deviceId);
 
         if (this.io) {
@@ -115,9 +115,6 @@ class DeviceController {
     this.currentDistance = distance;
     this.personDetected = personDetected;
 
-    // Log (opcional, puede ser verboso)
-    // console.log(`Distancia: ${distance.toFixed(1)} cm | Persona: ${personDetected ? 'SÍ' : 'NO'}`);
-
     // Enviar al frontend en tiempo real
     if (this.io) {
       this.io.emit("distance_update", {
@@ -149,7 +146,7 @@ class DeviceController {
   // Proveer feedback basado en distancia
   provideDistanceFeedback(deviceId, distance, personDetected) {
     if (!personDetected) {
-      return; // No enviar feedback si no hay persona
+      return;
     }
   }
 
@@ -176,10 +173,8 @@ class DeviceController {
 
   // Evento: Persona detectada
   onPersonDetected(deviceId) {
-    console.log(`👤 Persona detectada en ${deviceId}`);
+    console.log(`Persona detectada en ${deviceId}`);
 
-    // Notificar al Python microservice (opcional)
-    // Esto podría activar el procesamiento de video
     if (this.io) {
       this.io.emit("start_translation", {
         deviceId,
@@ -187,18 +182,15 @@ class DeviceController {
       });
     }
 
-    // Enviar mensaje al dispositivo
     this.sendToDevice(deviceId, {
       type: "status",
       message: "TRADUCIENDO",
     });
   }
 
-  // Evento: Persona salió
   onPersonLeft(deviceId) {
-    console.log(`👋 Persona salió del rango en ${deviceId}`);
+    console.log(`Persona salió del rango en ${deviceId}`);
 
-    // Detener traducción
     if (this.io) {
       this.io.emit("stop_translation", {
         deviceId,
@@ -206,7 +198,6 @@ class DeviceController {
       });
     }
 
-    // Enviar mensaje al dispositivo
     this.sendToDevice(deviceId, {
       type: "status",
       message: "DETENIDO",
@@ -215,7 +206,6 @@ class DeviceController {
     this.sendDisplayMessage(deviceId, "Esperando...");
   }
 
-  // Enviar mensaje a un dispositivo específico
   sendToDevice(deviceId, message) {
     const device = this.esp32Connections.get(deviceId);
     if (device && device.ws.readyState === WebSocket.OPEN) {
@@ -225,7 +215,6 @@ class DeviceController {
     return false;
   }
 
-  // Enviar mensaje a la pantalla LCD
   sendDisplayMessage(deviceId, text) {
     return this.sendToDevice(deviceId, {
       type: "display",
@@ -233,7 +222,6 @@ class DeviceController {
     });
   }
 
-  // Enviar mensaje a todos los dispositivos
   broadcastToDevices(message) {
     let sent = 0;
     this.esp32Connections.forEach((device, deviceId) => {
@@ -244,7 +232,6 @@ class DeviceController {
     return sent;
   }
 
-  // Control del LED
   setLED(deviceId, state) {
     return this.sendToDevice(deviceId, {
       type: "led",
@@ -252,7 +239,6 @@ class DeviceController {
     });
   }
 
-  // Control del Servo
   setServoAngle(deviceId, angle) {
     if (angle < 0 || angle > 180) {
       console.error("Ángulo de servo inválido:", angle);
@@ -264,10 +250,9 @@ class DeviceController {
     });
   }
 
-  // Limpiar conexiones inactivas
   cleanupInactiveConnections() {
     const now = Date.now();
-    const timeout = 60000; // 60 segundos
+    const timeout = 60000; 
 
     this.esp32Connections.forEach((device, deviceId) => {
       if (now - device.lastSeen > timeout) {
@@ -304,7 +289,6 @@ class DeviceController {
     };
   }
 
-  // Actualizar umbrales de distancia
   updateThresholds(min, max, optimal) {
     this.distanceThreshold = {
       min: min || this.distanceThreshold.min,
@@ -314,13 +298,11 @@ class DeviceController {
     console.log("Umbrales actualizados:", this.distanceThreshold);
   }
 
-  // Mostrar traducción en el dispositivo
   showTranslation(deviceId, text, confidence) {
     const displayText = `${text}\nConf: ${(confidence * 100).toFixed(0)}%`;
     return this.sendDisplayMessage(deviceId, displayText);
   }
 
-  // Broadcast de traducción a todos los dispositivos
   broadcastTranslation(text, confidence) {
     return this.broadcastToDevices({
       type: "display",
@@ -329,7 +311,6 @@ class DeviceController {
   }
 }
 
-// Instancia única (Singleton)
 const deviceController = new DeviceController();
 
 export default deviceController;

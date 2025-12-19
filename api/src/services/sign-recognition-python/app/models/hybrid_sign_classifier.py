@@ -9,13 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 class HybridSignClassifier:
-    """
-    Clasificador híbrido que espera 258 features:
-    - Pose: 132 features (33 landmarks × 4: x, y, z, visibility)
-    - Left Hand: 63 features (21 landmarks × 3: x, y, z)
-    - Right Hand: 63 features (21 landmarks × 3: x, y, z)
-    """
-
     def __init__(self, model_path: str, vocab_path: str, scaler_path: str):
         self.model_path = model_path
         self.vocab_path = vocab_path
@@ -65,18 +58,6 @@ class HybridSignClassifier:
             raise
 
     def predict(self, sequence_array: np.ndarray):
-        """
-        Predice la seña a partir de una secuencia de 30 frames.
-
-        Args:
-            sequence_array: Array de shape (1, 30, 258) con:
-                - Pose: 132 features
-                - Left Hand: 63 features
-                - Right Hand: 63 features
-
-        Returns:
-            (label, confidence): Tupla con predicción y confianza
-        """
         if sequence_array is None:
             logger.warning("Secuencia es None")
             return "ERROR", 0.0
@@ -125,7 +106,6 @@ class HybridSignClassifier:
             class_id = int(np.argmax(preds[0]))
             confidence = float(np.max(preds[0]))
 
-            # Validar class_id
             if class_id >= len(self.classes):
                 logger.error(
                     f"class_id {class_id} fuera de rango "
